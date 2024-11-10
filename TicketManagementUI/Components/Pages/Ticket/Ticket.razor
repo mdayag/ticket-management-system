@@ -1,0 +1,203 @@
+﻿@page "/ticket"
+
+@attribute [Authorize]
+
+@rendermode InteractiveServer
+
+@inject ITicketService ticketService
+@inject ICriteriaService criteriaService
+@inject IAccountService accountService
+@inject NavigationManager nav
+
+<SectionContent SectionName="page-title">Ticket Management</SectionContent>
+<style>
+    .filter-panel {
+        padding: 0 20px;
+        position: relative;
+        background-color: var(--light-green);
+        width: 100%;
+    }
+
+    .mud-input {
+        background-color: white !important;
+    }
+
+    .mud-elevation-1 {
+        box-shadow: none !important;
+    }
+
+    .mud-table-row {
+        cursor: pointer !important;
+    }
+
+    .mud-grid-item {
+        padding-top: .3rem !important;
+        padding-bottom: .3rem;
+    }
+</style>
+
+<div class="filter-panel">
+   <MudGrid>
+       <MudItem>
+           <MudTextField @bind-Value="Summary"
+               class="pt-2"
+               Variant="Variant.Outlined"
+               Adornment="Adornment.Start"
+               AdornmentIcon="@Icons.Material.Filled.Search"
+               AdornmentColor="Color.Dark">
+           </MudTextField>
+       </MudItem>
+       <MudItem>
+           <MultiSelect @ref="productDdl" elements="products" label="Product">
+           </MultiSelect>
+        </MudItem>
+        <MudItem>
+           <MultiSelect @ref="priorityDdl" elements="priorities" label="Priority">
+           </MultiSelect>
+        </MudItem>
+        <MudItem>
+           <MultiSelect @ref="categoryDdl" elements="categories" label="Category">
+           </MultiSelect>
+        </MudItem>
+        <MudItem>
+            <MultiSelect @ref="statusDdl" elements="status" label="Status">
+            </MultiSelect>
+        </MudItem>
+        <MudItem>
+            <MultiSelect @ref="raisedByDdl" elements="raisedBy" label="Raised By">
+            </MultiSelect>
+        </MudItem>
+        <MudItem class="d-flex align-content-center flex-grow-1 gap-3">
+            <MudButton 
+                Variant="Variant.Filled"
+                @onclick="() => dataGrid.ReloadServerData()"
+                Color="Color.Primary">
+                <MudText>Search</MudText>
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       @onclick="Reset"
+                       Color="Color.Dark">
+                <MudText>Reset</MudText>
+            </MudButton>
+        </MudItem>
+   </MudGrid>
+</div>
+
+<MudDataGrid @ref="dataGrid" 
+    T="GetTicketResponse" 
+    SortMode="@SortMode.None" 
+    ServerData="ServerReload" 
+    Hover="true"
+    RowClick="RowClicked"
+>
+    <Columns>
+        <PropertyColumn Property="x => x.TicketIdView" Title="Ticket Id" />
+        <PropertyColumn Property="x => x.Summary" />
+        <PropertyColumn Property="x => x.Product" />
+        <PropertyColumn Property="x => x.Category" />
+        <PropertyColumn Property="x => x.Priority" />
+        <PropertyColumn Property="x => x.Status" />
+        <PropertyColumn Property="x => x.RaisedBy" Title="Raised By" />
+        <PropertyColumn Property="x => x.ExpectedDate" Title="Expected Date" Format="dd MMM yyyy" />
+        <PropertyColumn Property="x => x.CreatedDate" Title="Created Date" Format="dd MMM yyyy" />
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="GetTicketResponse" />
+    </PagerContent>
+</MudDataGrid>
+
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? filterStatus { get; set; }
+
+    MudDataGrid<GetTicketResponse> dataGrid;
+    MultiSelect productDdl;
+    MultiSelect priorityDdl;
+    MultiSelect categoryDdl;
+    MultiSelect statusDdl;
+    MultiSelect raisedByDdl;
+
+    public string Summary { get; set; }
+
+    private List<SelectItemDTO> products;
+    private List<SelectItemDTO> priorities;
+    private List<SelectItemDTO> categories;
+    private List<SelectItemDTO> status;
+    private List<SelectItemDTO> raisedBy;
+
+    protected override Task OnInitializedAsync()
+    {
+        InitializeDropdown();
+
+        return Task.CompletedTask;
+    }
+
+
+    private void InitializeDropdown()
+    {
+        products = criteriaService.GetProducts()
+                    .Select(x => new SelectItemDTO { Value = x.ProductId.ToString(), Text = x.ProductName}).ToList();
+
+        priorities = criteriaService.GetPriorities()
+                    .Select(x => new SelectItemDTO { Value = x.PriorityId.ToString(), Text = x.PriorityName}).ToList();
+
+        categories = criteriaService.GetCategories()
+                    .Select(x => new SelectItemDTO { Value = x.CategoryId.ToString(), Text = x.CategoryName}).ToList();
+
+        status = criteriaService.GetStatus()
+                    .Select(x => new SelectItemDTO { Value = x, Text = x}).ToList();
+
+        raisedBy = accountService.GetUsers()
+                    .Select(x => new SelectItemDTO { Value = x.Id, Text = x.Email }).ToList();
+
+    }
+
+    private async Task<GridData<GetTicketResponse>> ServerReload(GridState<GetTicketResponse> state)
+    {
+        if (filterStatus != null)
+        {
+            statusDdl.options = new string[] { filterStatus};
+            filterStatus = null;
+            StateHasChanged();
+        }
+
+        IEnumerable<GetTicketResponse> getTickets = ticketService.GetTickets(new GetTicketRequest()
+        {
+            Summary = Summary,
+            ProductId = productDdl.options.Select(x => int.Parse(x)).ToArray(),
+            PriorityId = priorityDdl.options.Select(x => int.Parse(x)).ToArray(),
+            CategoryId = categoryDdl.options.Select(x => int.Parse(x)).ToArray(),
+            Status = statusDdl.options.ToArray(),
+            RaisedBy = raisedByDdl.options.ToArray()
+        });
+
+        await Task.Delay(300);
+
+        var totalItems = getTickets.Count();
+
+        var pagedData = getTickets.Skip(state.Page * state.PageSize).Take(state.PageSize).ToArray();
+        return new GridData<GetTicketResponse>
+            {
+                TotalItems = totalItems,
+                Items = pagedData
+            };
+    }
+
+    private void RowClicked(DataGridRowClickEventArgs<GetTicketResponse> args)
+    {
+        nav.NavigateTo($"/ticket/details/{args.Item.TicketId}");
+    }
+
+    private Task Reset()
+    {
+        productDdl.Clear();
+        priorityDdl.Clear();
+        categoryDdl.Clear();
+        statusDdl.Clear();
+        raisedByDdl.Clear();
+        Summary = string.Empty;
+
+        return dataGrid.ReloadServerData();
+    }
+}
