@@ -1,5 +1,4 @@
-﻿using Domain.DTO.Request;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace TicketManagementUI.Extensions.Helpers
 {
